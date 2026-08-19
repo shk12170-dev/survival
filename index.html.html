@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D FPS Survival - Forest Edition (30s Round)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100vw; height: 100vh; overflow: hidden;
+      background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+    }
+    
+    #gameCanvas { width: 100vw; height: 100vh; display: block; background: #0d130d; cursor: crosshair; }
+
+    /* Crosshair */
+    #crosshair {
+      position: absolute; top: 50%; left: 50%;
+      width: 12px; height: 12px;
+      transform: translate(-50%, -50%);
+      pointer-events: none; z-index: 5;
+    }
+    #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(76, 175, 80, 0.9); }
+    #crosshair::before { top: 5px; left: -10px; width: 32px; height: 2px; }
+    #crosshair::after { top: -10px; left: 5px; width: 2px; height: 32px; }
+
+    /* HUD */
+    #hud {
+      position: absolute; top: 15px; left: 15px;
+      max-width: calc(100vw - 30px);
+      font-size: 14px; font-weight: bold;
+      text-shadow: 2px 2px 4px #000; pointer-events: none; z-index: 5;
+      background: rgba(10, 20, 10, 0.85); padding: 12px 16px; border-radius: 8px;
+      border: 1px solid rgba(76, 175, 80, 0.3); display: flex; flex-wrap: wrap; gap: 15px;
+    }
+
+    /* Overlay Screen */
+    .overlay {
+      position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0, 0, 0, 0.88); display: flex; flex-direction: column;
+      justify-content: center; align-items: center; z-index: 10; padding: 20px;
+      overflow-y: auto;
+    }
+    .overlay-content {
+      width: 100%; max-width: 850px; display: flex; flex-direction: column; align-items: center;
+    }
+    .overlay h1 { font-size: 30px; margin-bottom: 10px; color: #ffca28; text-shadow: 0 0 10px rgba(255,202,40,0.5); text-align: center; }
+    .overlay h2 { font-size: 22px; margin-bottom: 15px; color: #81c784; }
+    .overlay p { font-size: 14px; margin-bottom: 12px; text-align: center; line-height: 1.6; color: #ddd; }
+    
+    .status-badge {
+      padding: 6px 14px; border-radius: 20px; font-size: 14px; font-weight: bold; margin-bottom: 10px;
+    }
+    .status-in_progress { background: #2196f3; color: #fff; }
+    .status-success { background: #4caf50; color: #fff; }
+    .status-failed { background: #f44336; color: #fff; }
+
+    .btn {
+      padding: 10px 22px; font-size: 15px; font-weight: bold; color: #fff;
+      background: #2e7d32; border: none; border-radius: 6px; cursor: pointer;
+      margin: 4px; transition: background 0.2s, transform 0.1s;
+    }
+    .btn:hover { background: #388e3c; transform: translateY(-1px); }
+    .btn-secondary { background: #0288d1; }
+    .btn-secondary:hover { background: #039be5; }
+    .btn-danger { background: #f44336; }
+    .btn-danger:hover { background: #e53935; }
+
+    /* 플레이 기록 배너 */
+    .records-banner {
+      width: 100%; max-width: 650px; background: rgba(20, 35, 20, 0.85);
+      border: 1px solid rgba(76, 175, 80, 0.5); border-radius: 10px;
+      padding: 14px 18px; margin: 12px 0; text-align: center;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    }
+    .banner-title { font-size: 16px; font-weight: bold; color: #ffca28; margin-bottom: 10px; }
+    .stats-grid { display: flex; justify-content: space-around; margin-bottom: 10px; gap: 10px; }
+    .stat-box {
+      background: rgba(255, 255, 255, 0.08); padding: 8px 14px; border-radius: 6px;
+      flex: 1; text-align: center; border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .stat-label { font-size: 12px; color: #aaa; display: block; margin-bottom: 2px; }
+    .stat-value { font-size: 16px; font-weight: bold; color: #81c784; }
+
+    .controls-panel {
+      margin-bottom: 15px; background: rgba(255, 255, 255, 0.08);
+      padding: 14px 20px; border-radius: 8px; width: 100%; max-width: 600px;
+      display: flex; flex-direction: column; gap: 12px; font-size: 14px;
+    }
+    .setting-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+    .setting-row select, .setting-row input[type="checkbox"] {
+      padding: 6px 10px; border-radius: 4px; border: 1px solid #666; background: #222; color: #fff; font-size: 14px;
+    }
+
+    .table-container {
+      width: 100%; max-height: 150px; overflow-y: auto; overflow-x: auto;
+      background: rgba(255, 255, 255, 0.05); border-radius: 6px; margin-bottom: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; min-width: 500px; }
+    th, td { padding: 7px 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+    th { background: rgba(255, 255, 255, 0.15); position: sticky; top: 0; }
+
+    .section-title { font-size: 15px; font-weight: bold; color: #81c784; margin: 10px 0 6px 0; width: 100%; text-align: left; }
+    #pause-screen, #settings-screen { background: rgba(0, 0, 0, 0.93); display: none; z-index: 20; }
+  </style>
+</head>
+<body>
+
+  <div id="crosshair"></div>
+
+  <!-- HUD UI -->
+  <div id="hud">
+    <div>상태: <span id="ui-status-text" class="status-badge status-in_progress">진행 중</span></div>
+    <div>남은 시간: <span id="ui-timer" style="color:#ffca28; font-size:16px;">30</span>초</div>
+    <div>체력: <span id="ui-hp" style="color:#4caf50;">100</span></div>
+    <div>난이도: <span id="ui-difficulty" style="color:#2196f3;">보통</span></div>
+    <div>해상도: <span id="ui-resolution">1920x1080</span></div>
+    <div>남은 적: <span id="ui-enemies">0</span></div>
+    <div>점수: <span id="ui-score">0</span></div>
+  </div>
+
+  <!-- Start Screen -->
+  <div id="start-screen" class="overlay">
+    <div class="overlay-content">
+      <h1>3D FPS SURVIVAL: FOREST</h1>
+      <p style="font-size: 15px; color: #ffca28; font-weight: bold;">
+        "각 라운드의 제한 시간은 <b>30초</b>입니다. 30초 동안 끝까지 살아남으세요!"
+      </p>
+      <p>
+        <b>W, A, S, D</b>: 이동 | <b>마우스</b>: 시점 전환 | <b>좌클릭</b>: 발사 | <b>P 키</b>: 일시정지
+      </p>
+
+      <div style="margin-bottom: 10px;">
+        <button class="btn" id="start-btn">게임 시작</button>
+        <button class="btn btn-secondary" id="open-settings-btn">⚙️ 게임 설정</button>
+      </div>
+
+      <!-- 플레이 기록 배너 -->
+      <div class="records-banner">
+        <div class="banner-title">🏆 누적 플레이 기록 요약</div>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <span class="stat-label">총 플레이</span>
+            <span id="banner-stat-total" class="stat-value">0회</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">최고 점수</span>
+            <span id="banner-stat-high" class="stat-value">0점</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">성공률</span>
+            <span id="banner-stat-winrate" class="stat-value">0%</span>
+          </div>
+        </div>
+        <div class="banner-title" style="font-size: 13px; color: #81c784; margin-bottom: 6px;">최근 플레이 기록 (최신 5개)</div>
+        <div class="table-container" style="max-height: 110px;">
+          <table>
+            <thead>
+              <tr>
+                <th>난이도</th>
+                <th>해상도</th>
+                <th>생존시간</th>
+                <th>점수</th>
+                <th>결과</th>
+              </tr>
+            </thead>
+            <tbody id="start-records-tbody">
+              <tr><td colspan="5" style="text-align:center;">기록이 없습니다.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Screen Modal (시작/종료 페이지 공용) -->
+  <div id="settings-screen" class="overlay">
+    <div class="overlay-content">
+      <h2>⚙️ 게임 설정 (Settings)</h2>
+      
+      <div class="controls-panel">
+        <div class="setting-row">
+          <label for="setting-resolution"><b>해상도 설정 (Resolution)</b></label>
+          <select id="setting-resolution">
+            <option value="1920x1080" selected>1920 × 1080 (Full HD)</option>
+            <option value="1366x768">1366 × 768 (HD)</option>
+          </select>
+        </div>
+
+        <div class="setting-row">
+          <label for="setting-difficulty"><b>난이도 설정 (Difficulty)</b></label>
+          <select id="setting-difficulty">
+            <option value="easy">쉬움 (Easy - 생성 3.5초 / 데미지 낮음)</option>
+            <option value="normal" selected>보통 (Normal - 생성 2.0초 / 기본)</option>
+            <option value="hard">어려움 (Hard - 생성 1.0초 / 속도·데미지 증가)</option>
+          </select>
+        </div>
+
+        <div class="setting-row">
+          <label for="setting-shake">화면 흔들림 효과</label>
+          <input type="checkbox" id="setting-shake" checked>
+        </div>
+
+        <div class="setting-row">
+          <label for="setting-reduce-motion">움직임 줄이기 (모션 간소화)</label>
+          <input type="checkbox" id="setting-reduce-motion">
+        </div>
+      </div>
+
+      <button class="btn" id="save-settings-btn">저장 및 적용</button>
+      <button class="btn btn-secondary" id="cancel-settings-btn">취소</button>
+    </div>
+  </div>
+
+  <!-- Pause Screen -->
+  <div id="pause-screen" class="overlay">
+    <div class="overlay-content">
+      <h2>일시정지 (PAUSED)</h2>
+      <p>P 키를 누르거나 아래 버튼을 눌러 재개하세요.</p>
+      <button class="btn" id="resume-btn">게임 재개</button>
+    </div>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div id="game-over-screen" class="overlay" style="display: none;">
+    <div class="overlay-content">
+      <h1 id="result-title">성공!</h1>
+      <div id="result-status-badge" class="status-badge status-success">성공</div>
+      <p id="result-desc"></p>
+
+      <div class="section-title">전체 플레이 기록</div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>회차</th>
+              <th>난이도</th>
+              <th>해상도</th>
+              <th>생존 시간</th>
+              <th>처치 수</th>
+              <th>결과</th>
+              <th>사유</th>
+            </tr>
+          </thead>
+          <tbody id="records-table-body"></tbody>
+        </table>
+      </div>
+
+      <div>
+        <button class="btn" id="restart-btn">다시 시작</button>
+        <button class="btn btn-secondary" id="over-settings-btn">⚙️ 설정 변경</button>
+        <button class="btn btn-secondary" id="to-start-btn">시작 화면으로</button>
+        <button class="btn btn-danger" id="clear-records-btn">기록 초기화</button>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const MAP_RADIUS = 450;
+    const Sprites = { humanWalk: [], humanAttack: [], beastWalk: [], beastAttack: [], rock: null, tree: null };
+
+    // --- SPRITE GENERATION ---
+    function generateSprites() {
+      // 1-1. 사람 적 보행
+      for (let i = 0; i < 4; i++) {
+        const c = document.createElement('canvas');
+        c.width = 64; c.height = 128;
+        const cx = c.getContext('2d');
+        const legAngle = Math.sin((i / 4) * Math.PI * 2) * 20;
+
+        cx.fillStyle = '#2b3a4a'; cx.fillRect(20, 40, 24, 45);
+        cx.fillStyle = '#ffcc99'; cx.beginPath(); cx.arc(32, 25, 12, 0, Math.PI * 2); cx.fill();
+        
+        cx.strokeStyle = '#1a1a24'; cx.lineWidth = 8; cx.lineCap = 'round';
+        cx.beginPath(); cx.moveTo(26, 85); cx.lineTo(26 + Math.sin(legAngle * Math.PI / 180) * 15, 120); cx.stroke();
+        cx.beginPath(); cx.moveTo(38, 85); cx.lineTo(38 - Math.sin(legAngle * Math.PI / 180) * 15, 120); cx.stroke();
+
+        cx.strokeStyle = '#2b3a4a'; cx.lineWidth = 6;
+        cx.beginPath(); cx.moveTo(20, 45); cx.lineTo(12, 75); cx.stroke();
+        cx.beginPath(); cx.moveTo(44, 45); cx.lineTo(52, 75); cx.stroke();
+
+        Sprites.humanWalk.push(c);
+      }
+
+      // 1-2. 사람 적 근접 공격 모션
+      for (let i = 0; i < 2; i++) {
+        const c = document.createElement('canvas');
+        c.width = 64; c.height = 128;
+        const cx = c.getContext('2d');
+
+        cx.fillStyle = '#3a2b2b'; cx.fillRect(20, 40, 24, 45);
+        cx.fillStyle = '#ffcc99'; cx.beginPath(); cx.arc(32, 25, 12, 0, Math.PI * 2); cx.fill();
+        
+        cx.strokeStyle = '#1a1a24'; cx.lineWidth = 8;
+        cx.beginPath(); cx.moveTo(26, 85); cx.lineTo(18, 120); cx.stroke();
+        cx.beginPath(); cx.moveTo(38, 85); cx.lineTo(46, 120); cx.stroke();
+
+        cx.strokeStyle = '#8b0000'; cx.lineWidth = 7;
+        cx.beginPath(); cx.moveTo(20, 45); cx.lineTo(10, 65); cx.stroke();
+
+        if (i === 0) {
+          cx.beginPath(); cx.moveTo(44, 45); cx.lineTo(58, 10); cx.stroke();
+          cx.fillStyle = '#ff9800'; cx.fillRect(52, 5, 10, 10);
+        } else {
+          cx.beginPath(); cx.moveTo(44, 45); cx.lineTo(52, 75); cx.stroke();
+          cx.fillStyle = '#f44336'; cx.beginPath(); cx.arc(52, 75, 12, 0, Math.PI * 2); cx.fill();
+        }
+        Sprites.humanAttack.push(c);
+      }
+
+      // 2-1. 맹수 적 보행
+      for (let i = 0; i < 4; i++) {
+        const c = document.createElement('canvas');
+        c.width = 128; c.height = 80;
+        const cx = c.getContext('2d');
+        const legOffset = Math.sin((i / 4) * Math.PI * 2) * 15;
+
+        cx.fillStyle = '#5a3d28'; cx.beginPath(); cx.ellipse(60, 40, 35, 18, 0, 0, Math.PI * 2); cx.fill();
+        cx.fillStyle = '#422b1b'; cx.beginPath(); cx.arc(25, 30, 15, 0, Math.PI * 2); cx.fill();
+        cx.fillStyle = '#ffeb3b'; cx.beginPath(); cx.arc(18, 26, 3, 0, Math.PI * 2); cx.fill();
+        cx.strokeStyle = '#2c1c11'; cx.lineWidth = 7;
+        cx.beginPath(); cx.moveTo(38, 50); cx.lineTo(38 + legOffset, 75); cx.stroke();
+        cx.beginPath(); cx.moveTo(80, 50); cx.lineTo(80 - legOffset, 75); cx.stroke();
+        Sprites.beastWalk.push(c);
+      }
+
+      // 2-2. 맹수 적 공격 모션
+      for (let i = 0; i < 2; i++) {
+        const c = document.createElement('canvas');
+        c.width = 128; c.height = 80;
+        const cx = c.getContext('2d');
+        const jumpY = i === 1 ? -12 : 0;
+
+        cx.fillStyle = '#5a3d28'; cx.beginPath(); cx.ellipse(60, 35 + jumpY, 38, 20, -0.2, 0, Math.PI * 2); cx.fill();
+        cx.fillStyle = '#422b1b'; cx.beginPath(); cx.arc(20, 20 + jumpY, 16, 0, Math.PI * 2); cx.fill();
+        
+        cx.fillStyle = '#d32f2f'; cx.beginPath(); cx.arc(10, 26 + jumpY, 7, 0, Math.PI * 2); cx.fill();
+        cx.fillStyle = '#ff1744'; cx.beginPath(); cx.arc(15, 14 + jumpY, 4, 0, Math.PI * 2); cx.fill();
+
+        cx.strokeStyle = '#2c1c11'; cx.lineWidth = 7;
+        cx.beginPath(); cx.moveTo(30, 48 + jumpY); cx.lineTo(15, 75 + jumpY); cx.stroke();
+        cx.beginPath(); cx.moveTo(85, 48 + jumpY); cx.lineTo(100, 75 + jumpY); cx.stroke();
+        Sprites.beastAttack.push(c);
+      }
+
+      // 3. 지형지물 (나무, 바위)
+      const ct = document.createElement('canvas'); ct.width = 128; ct.height = 256;
+      const cxt = ct.getContext('2d');
+      cxt.fillStyle = '#3e2723'; cxt.fillRect(52, 90, 24, 166);
+      cxt.fillStyle = '#1b5e20'; cxt.beginPath(); cxt.arc(64, 70, 50, 0, Math.PI * 2); cxt.fill();
+      cxt.fillStyle = '#2e7d32'; cxt.beginPath(); cxt.arc(50, 50, 35, 0, Math.PI * 2); cxt.fill();
+      Sprites.tree = ct;
+
+      const cr = document.createElement('canvas'); cr.width = 128; cr.height = 90;
+      const cxr = cr.getContext('2d');
+      cxr.fillStyle = '#424242'; cxr.beginPath(); cxr.ellipse(64, 55, 55, 30, 0, 0, Math.PI * 2); cxr.fill();
+      cxr.fillStyle = '#616161'; cxr.beginPath(); cxr.ellipse(50, 45, 35, 20, 0, 0, Math.PI * 2); cxr.fill();
+      Sprites.rock = cr;
+    }
+
+    // --- GAME CONTROL & CONFIG ---
+    const MAX_GAME_TIME = 30; // 30초 고정
+    let isPlaying = false;
+    let isPaused = false;
+    let gameState = 'in_progress';
+    let timer = MAX_GAME_TIME;
+    let timerInterval = null;
+    let spawnIntervalTimer = null;
+    let score = 0;
+    let playerHp = 100;
+    let killCount = 0;
+    let failureReason = '';
+
+    // 설정 변수
+    let currentResolution = '1920x1080';
+    let currentDifficulty = 'normal';
+    let spawnInterval = 2.0;
+    let speedMult = 1.0;
+    let damageMult = 1.0;
+
+    let enableShake = true;
+    let reduceMotion = false;
+    let shakeIntensity = 0;
+
+    const RECORDS_KEY = 'fps_survival_records_v8';
+
+    const player = { x: 0, y: 0, angle: 0, speed: 4.0, fov: Math.PI / 3 };
+    const keys = { w: false, a: false, s: false, d: false };
+    let enemies = [];
+    let bullets = [];
+    let environmentObjects = [];
+    let leaves = [];
+
+    function applyDifficultySettings() {
+      if (currentDifficulty === 'easy') {
+        spawnInterval = 3.5; speedMult = 0.75; damageMult = 0.7;
+      } else if (currentDifficulty === 'hard') {
+        spawnInterval = 1.0; speedMult = 1.35; damageMult = 1.4;
+      } else {
+        spawnInterval = 2.0; speedMult = 1.0; damageMult = 1.0;
+      }
+    }
+
+    function applyResolutionSettings() {
+      const [w, h] = currentResolution.split('x').map(Number);
+      canvas.width = w;
+      canvas.height = h;
+    }
+
+    function loadRecords() {
+      let history = [];
+      try {
+        const rawHistory = localStorage.getItem(RECORDS_KEY);
+        if (rawHistory) history = JSON.parse(rawHistory) || [];
+      } catch (e) { history = []; }
+      return history;
+    }
+
+    function saveRecords(history) {
+      try { localStorage.setItem(RECORDS_KEY, JSON.stringify(history)); } catch (e) {}
+    }
+
+    function refreshRecordsUI() {
+      const history = loadRecords();
+
+      const totalGames = history.length;
+      const wins = history.filter(r => r.success).length;
+      const winRate = totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0;
+      const highScore = history.reduce((max, r) => Math.max(max, r.score || 0), 0);
+
+      document.getElementById('banner-stat-total').innerText = `${totalGames}회`;
+      document.getElementById('banner-stat-high').innerText = `${highScore}점`;
+      document.getElementById('banner-stat-winrate').innerText = `${winRate}%`;
+
+      const startTbody = document.getElementById('start-records-tbody');
+      if (history.length === 0) {
+        startTbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#888;">최근 플레이 기록이 없습니다.</td></tr>';
+      } else {
+        startTbody.innerHTML = history.slice(0, 5).map(r => `
+          <tr>
+            <td>${r.difficulty || '-'}</td>
+            <td>${r.resolution || '-'}</td>
+            <td>${r.survivalTime}초</td>
+            <td>${r.score}점</td>
+            <td style="color:${r.success ? '#4caf50' : '#f44336'}; font-weight:bold;">${r.success ? '성공' : '실패'}</td>
+          </tr>
+        `).join('');
+      }
+
+      const overTbody = document.getElementById('records-table-body');
+      if (history.length === 0) {
+        overTbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#888;">기록이 없습니다.</td></tr>';
+      } else {
+        overTbody.innerHTML = history.slice(0, 15).map((r, i) => `
+          <tr>
+            <td>${history.length - i}</td>
+            <td>${r.difficulty || '-'}</td>
+            <td>${r.resolution || '-'}</td>
+            <td>${r.survivalTime}초</td>
+            <td>${r.killCount}회</td>
+            <td style="color:${r.success ? '#4caf50' : '#f44336'}; font-weight:bold;">${r.success ? '성공' : '실패'}</td>
+            <td>${r.reason}</td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    function init() {
+      generateSprites();
+      applyResolutionSettings();
+      refreshRecordsUI();
+
+      window.addEventListener('keydown', e => {
+        if (e.code === 'KeyP') { togglePause(); return; }
+        handleKey(e.code, true);
+      });
+      window.addEventListener('keyup', e => handleKey(e.code, false));
+      window.addEventListener('blur', () => { if (isPlaying && !isPaused) pauseGame(); });
+
+      document.addEventListener('mousemove', e => {
+        if (document.pointerLockElement === canvas && isPlaying && !isPaused) {
+          player.angle += e.movementX * 0.003;
+        }
+      });
+
+      canvas.addEventListener('mousedown', e => {
+        if (isPlaying && !isPaused && document.pointerLockElement === canvas && e.button === 0) {
+          shoot();
+        }
+      });
+
+      document.getElementById('start-btn').addEventListener('click', startGame);
+      document.getElementById('restart-btn').addEventListener('click', startGame);
+      document.getElementById('resume-btn').addEventListener('click', resumeGame);
+      document.getElementById('clear-records-btn').addEventListener('click', clearRecords);
+
+      document.getElementById('to-start-btn').addEventListener('click', () => {
+        document.getElementById('game-over-screen').style.display = 'none';
+        document.getElementById('start-screen').style.display = 'flex';
+        refreshRecordsUI();
+      });
+
+      const openSettingsModal = () => {
+        document.getElementById('setting-resolution').value = currentResolution;
+        document.getElementById('setting-difficulty').value = currentDifficulty;
+        document.getElementById('setting-shake').checked = enableShake;
+        document.getElementById('setting-reduce-motion').checked = reduceMotion;
+        document.getElementById('settings-screen').style.display = 'flex';
+      };
+
+      document.getElementById('open-settings-btn').addEventListener('click', openSettingsModal);
+      document.getElementById('over-settings-btn').addEventListener('click', openSettingsModal);
+
+      document.getElementById('cancel-settings-btn').addEventListener('click', () => {
+        document.getElementById('settings-screen').style.display = 'none';
+      });
+
+      document.getElementById('save-settings-btn').addEventListener('click', () => {
+        currentResolution = document.getElementById('setting-resolution').value;
+        currentDifficulty = document.getElementById('setting-difficulty').value;
+        enableShake = document.getElementById('setting-shake').checked;
+        reduceMotion = document.getElementById('setting-reduce-motion').checked;
+
+        applyResolutionSettings();
+        applyDifficultySettings();
+        updateHUD();
+
+        document.getElementById('settings-screen').style.display = 'none';
+      });
+
+      applyDifficultySettings();
+      updateHUD();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function handleKey(code, isPressed) {
+      if (code === 'KeyW') keys.w = isPressed;
+      if (code === 'KeyS') keys.s = isPressed;
+      if (code === 'KeyA') keys.a = isPressed;
+      if (code === 'KeyD') keys.d = isPressed;
+    }
+
+    function startGame() {
+      canvas.requestPointerLock();
+
+      document.getElementById('start-screen').style.display = 'none';
+      document.getElementById('game-over-screen').style.display = 'none';
+      document.getElementById('pause-screen').style.display = 'none';
+      document.getElementById('settings-screen').style.display = 'none';
+
+      isPlaying = true; isPaused = false; gameState = 'in_progress';
+      timer = MAX_GAME_TIME; score = 0; playerHp = 100; killCount = 0; failureReason = '';
+      player.x = 0; player.y = 0; player.angle = 0;
+      enemies = []; bullets = [];
+
+      applyDifficultySettings();
+      setupEnvironment();
+      setupLeaves();
+      spawnEnemy();
+      updateHUD();
+
+      clearInterval(timerInterval);
+      clearInterval(spawnIntervalTimer);
+
+      timerInterval = setInterval(() => {
+        if (!isPlaying || isPaused) return;
+        timer--;
+        updateHUD();
+        if (timer <= 0) endGame(true, "30초 동안 생존에 성공하셨습니다!");
+      }, 1000);
+
+      spawnIntervalTimer = setInterval(() => {
+        if (isPlaying && !isPaused && enemies.length < 15) spawnEnemy();
+      }, spawnInterval * 1000);
+    }
+
+    function setupEnvironment() {
+      environmentObjects = [];
+      for (let i = 0; i < 35; i++) {
+        let ang = Math.random() * Math.PI * 2;
+        let dist = 80 + Math.random() * (MAP_RADIUS - 100);
+        let x = Math.cos(ang) * dist;
+        let y = Math.sin(ang) * dist;
+        let type = Math.random() > 0.4 ? 'tree' : 'rock';
+        environmentObjects.push({ x, y, type });
+      }
+    }
+
+    function setupLeaves() {
+      leaves = [];
+      for (let i = 0; i < 50; i++) {
+        leaves.push({
+          x: (Math.random() - 0.5) * MAP_RADIUS * 2,
+          y: (Math.random() - 0.5) * MAP_RADIUS * 2,
+          z: Math.random() * 80 + 10,
+          speedX: Math.random() * 0.8 + 0.2,
+          speedZ: Math.random() * 0.3 + 0.1
+        });
+      }
+    }
+
+    function spawnEnemy() {
+      let x, y, dist;
+      do {
+        let ang = Math.random() * Math.PI * 2;
+        dist = 180 + Math.random() * (MAP_RADIUS - 220);
+        x = Math.cos(ang) * dist;
+        y = Math.sin(ang) * dist;
+      } while (Math.hypot(x - player.x, y - player.y) < 150);
+
+      enemies.push({
+        x, y, hp: 30,
+        speed: (2.2 + Math.random() * 0.4) * speedMult,
+        type: Math.random() > 0.5 ? 'human' : 'beast',
+        animFrame: 0, animTimer: 0,
+        isAttacking: false, attackTimer: 0
+      });
+      updateHUD();
+    }
+
+    function shoot() {
+      bullets.push({
+        x: player.x, y: player.y,
+        dx: Math.cos(player.angle) * 16,
+        dy: Math.sin(player.angle) * 16,
+        life: 35
+      });
+      if (enableShake && !reduceMotion) shakeIntensity = 3;
+    }
+
+    function togglePause() {
+      if (!isPlaying) return;
+      if (isPaused) resumeGame(); else pauseGame();
+    }
+
+    function pauseGame() {
+      isPaused = true;
+      document.exitPointerLock();
+      document.getElementById('pause-screen').style.display = 'flex';
+    }
+
+    function resumeGame() {
+      isPaused = false;
+      document.getElementById('pause-screen').style.display = 'none';
+      canvas.requestPointerLock();
+    }
+
+    function gameLoop() {
+      if (isPlaying && !isPaused) {
+        updatePlayer();
+        updateBullets();
+        updateEnemies();
+        updateLeaves();
+      }
+      render();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function updatePlayer() {
+      let moveX = 0, moveY = 0;
+      if (keys.w) { moveX += Math.cos(player.angle); moveY += Math.sin(player.angle); }
+      if (keys.s) { moveX -= Math.cos(player.angle); moveY -= Math.sin(player.angle); }
+      if (keys.a) { moveX += Math.cos(player.angle - Math.PI / 2); moveY += Math.sin(player.angle - Math.PI / 2); }
+      if (keys.d) { moveX += Math.cos(player.angle + Math.PI / 2); moveY += Math.sin(player.angle + Math.PI / 2); }
+
+      const len = Math.hypot(moveX, moveY);
+      if (len > 0) {
+        let nextX = player.x + (moveX / len) * player.speed;
+        let nextY = player.y + (moveY / len) * player.speed;
+
+        if (Math.hypot(nextX, nextY) <= MAP_RADIUS) {
+          player.x = nextX;
+          player.y = nextY;
+        }
+      }
+    }
+
+    function updateBullets() {
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.x += b.dx; b.y += b.dy; b.life--;
+
+        for (let j = enemies.length - 1; j >= 0; j--) {
+          const e = enemies[j];
+          if (Math.hypot(b.x - e.x, b.y - e.y) < 25) {
+            e.hp -= 15;
+            bullets.splice(i, 1);
+            if (e.hp <= 0) {
+              enemies.splice(j, 1);
+              killCount++; score += 100;
+              updateHUD();
+            }
+            break;
+          }
+        }
+        if (b && b.life <= 0) bullets.splice(i, 1);
+      }
+    }
+
+    function updateEnemies() {
+      enemies.forEach(e => {
+        const dist = Math.hypot(player.x - e.x, player.y - e.y);
+        const angle = Math.atan2(player.y - e.y, player.x - e.x);
+
+        if (dist < 30) {
+          e.isAttacking = true;
+          e.attackTimer += 0.15;
+          if (e.attackTimer >= 2) e.attackTimer = 0;
+
+          const dmg = (e.type === 'human' ? 0.35 : 0.55) * damageMult;
+          playerHp -= dmg;
+          updateHUD();
+          if (enableShake && !reduceMotion) shakeIntensity = 5;
+
+          if (playerHp <= 0) {
+            failureReason = e.type === 'human' ? '사람 적의 내리치기 공격으로 사망' : '맹수의 덮치기 공격으로 사망';
+            endGame(false, failureReason);
+          }
+        } else {
+          e.isAttacking = false;
+          e.attackTimer = 0;
+
+          e.x += Math.cos(angle) * e.speed;
+          e.y += Math.sin(angle) * e.speed;
+
+          e.animTimer += 0.1;
+          if (e.animTimer >= 1) { e.animFrame = (e.animFrame + 1) % 4; e.animTimer = 0; }
+        }
+      });
+    }
+
+    function updateLeaves() {
+      leaves.forEach(l => {
+        l.x += l.speedX;
+        l.z -= l.speedZ;
+        if (l.z <= 0) l.z = 80;
+        if (l.x > player.x + MAP_RADIUS) l.x = player.x - MAP_RADIUS;
+      });
+    }
+
+    function render() {
+      ctx.save();
+
+      if (shakeIntensity > 0 && !reduceMotion) {
+        ctx.translate((Math.random() - 0.5) * shakeIntensity, (Math.random() - 0.5) * shakeIntensity);
+        shakeIntensity *= 0.85;
+      }
+
+      ctx.fillStyle = '#101710'; ctx.fillRect(0, 0, canvas.width, canvas.height / 2);
+      ctx.fillStyle = '#1b261b'; ctx.fillRect(0, canvas.height / 2, canvas.width, canvas.height / 2);
+
+      if (!isPlaying) { ctx.restore(); return; }
+
+      const renderList = [];
+
+      environmentObjects.forEach(obj => {
+        const proj = project3D(obj.x, obj.y);
+        if (proj) renderList.push({ ...proj, type: obj.type });
+      });
+
+      enemies.forEach(e => {
+        const proj = project3D(e.x, e.y);
+        if (proj) {
+          renderList.push({
+            ...proj, type: e.type,
+            frame: e.isAttacking ? Math.floor(e.attackTimer) % 2 : e.animFrame,
+            isAttacking: e.isAttacking
+          });
+        }
+      });
+
+      bullets.forEach(b => {
+        const proj = project3D(b.x, b.y);
+        if (proj) renderList.push({ ...proj, type: 'bullet' });
+      });
+
+      leaves.forEach(l => {
+        const proj = project3D(l.x, l.y);
+        if (proj) renderList.push({ ...proj, type: 'leaf', z: l.z });
+      });
+
+      renderList.sort((a, b) => b.depth - a.depth);
+
+      renderList.forEach(item => {
+        if (item.type === 'tree') {
+          const sprite = Sprites.tree;
+          const h = (65 * 450) / item.depth;
+          ctx.drawImage(sprite, item.x - h * 0.25, canvas.height / 2 - h / 2, h * 0.5, h);
+        } else if (item.type === 'rock') {
+          const sprite = Sprites.rock;
+          const h = (30 * 450) / item.depth;
+          ctx.drawImage(sprite, item.x - h * 0.6, canvas.height / 2, h * 1.2, h * 0.7);
+        } else if (item.type === 'human' || item.type === 'beast') {
+          let sprite;
+          if (item.type === 'human') {
+            sprite = item.isAttacking ? Sprites.humanAttack[item.frame] : Sprites.humanWalk[item.frame];
+          } else {
+            sprite = item.isAttacking ? Sprites.beastAttack[item.frame] : Sprites.beastWalk[item.frame];
+          }
+          const h = (42 * 450) / item.depth;
+          const w = item.type === 'human' ? h * 0.5 : h * 1.1;
+          ctx.drawImage(sprite, item.x - w / 2, canvas.height / 2 - h / 3, w, h);
+        } else if (item.type === 'bullet') {
+          const size = Math.max(2, (8 * 420) / item.depth);
+          ctx.fillStyle = '#ffeb3b';
+          ctx.beginPath(); ctx.arc(item.x, canvas.height / 2, size, 0, Math.PI * 2); ctx.fill();
+        } else if (item.type === 'leaf') {
+          const h = canvas.height / 2 - (item.z * 100) / item.depth;
+          ctx.fillStyle = '#81c784';
+          ctx.fillRect(item.x, h, 3, 3);
+        }
+      });
+
+      ctx.restore();
+    }
+
+    function project3D(gx, gy) {
+      const dx = gx - player.x;
+      const dy = gy - player.y;
+
+      let angle = Math.atan2(dy, dx) - player.angle;
+      while (angle < -Math.PI) angle += Math.PI * 2;
+      while (angle > Math.PI) angle -= Math.PI * 2;
+
+      if (Math.abs(angle) > player.fov) return null;
+
+      const depth = Math.hypot(dx, dy) * Math.cos(angle);
+      if (depth < 8) return null;
+
+      const screenX = (canvas.width / 2) + Math.tan(angle) * (canvas.width / 2);
+      return { x: screenX, depth };
+    }
+
+    function updateHUD() {
+      const statusText = document.getElementById('ui-status-text');
+      statusText.innerText = gameState === 'in_progress' ? '진행 중' : (gameState === 'success' ? '성공' : '실패');
+      statusText.className = `status-badge status-${gameState}`;
+
+      document.getElementById('ui-timer').innerText = Math.max(0, timer);
+      document.getElementById('ui-hp').innerText = Math.max(0, Math.floor(playerHp));
+      document.getElementById('ui-enemies').innerText = enemies.length;
+      document.getElementById('ui-score').innerText = score;
+
+      const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
+      document.getElementById('ui-difficulty').innerText = diffLabel[currentDifficulty] || '보통';
+      document.getElementById('ui-resolution').innerText = currentResolution;
+    }
+
+    function endGame(isSuccess, desc) {
+      isPlaying = false;
+      document.exitPointerLock();
+      clearInterval(timerInterval);
+      clearInterval(spawnIntervalTimer);
+
+      gameState = isSuccess ? 'success' : 'failed';
+      const survivalTime = MAX_GAME_TIME - timer;
+      if (isSuccess) score += Math.floor(playerHp) * 3 + killCount * 150;
+
+      const diffLabel = { easy: '쉬움', normal: '보통', hard: '어려움' };
+      const recordEntry = {
+        difficulty: diffLabel[currentDifficulty],
+        resolution: currentResolution,
+        survivalTime: survivalTime,
+        killCount: killCount,
+        score: score,
+        success: isSuccess,
+        reason: isSuccess ? '30초 생존 성공' : failureReason
+      };
+
+      const history = loadRecords();
+      history.unshift(recordEntry);
+      saveRecords(history);
+
+      const overScreen = document.getElementById('game-over-screen');
+      document.getElementById('result-title').innerText = isSuccess ? "성공 (SUCCESS)" : "실패 (FAILED)";
+      document.getElementById('result-title').style.color = isSuccess ? "#4caf50" : "#f44336";
+      document.getElementById('result-status-badge').innerText = isSuccess ? "성공" : "실패";
+      document.getElementById('result-status-badge').className = `status-badge status-${gameState}`;
+      document.getElementById('result-desc').innerText = `${desc}\n최종 점수: ${score}점 | 생존 시간: ${survivalTime}초 | 처치 수: ${killCount}명`;
+
+      refreshRecordsUI();
+      updateHUD();
+      overScreen.style.display = 'flex';
+    }
+
+    function clearRecords() {
+      try { localStorage.removeItem(RECORDS_KEY); } catch (e) {}
+      refreshRecordsUI();
+      alert("플레이 기록이 초기화되었습니다.");
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
