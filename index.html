@@ -12,7 +12,7 @@
       user-select: none;
     }
     
-    #gameCanvas { width: 100vw; height: 100vh; display: block; background: #0d130d; cursor: crosshair; }
+    #gameCanvas { width: 100vw; height: 100vh; display: block; background: #0d130d; cursor: crosshair; object-fit: contain; }
 
     /* Crosshair */
     #crosshair {
@@ -32,8 +32,9 @@
       font-size: 14px; font-weight: bold;
       text-shadow: 2px 2px 4px #000; pointer-events: none; z-index: 5;
       background: rgba(10, 20, 10, 0.85); padding: 12px 16px; border-radius: 8px;
-      border: 1px solid rgba(76, 175, 80, 0.3); display: flex; flex-wrap: wrap; gap: 15px;
+      border: 1px solid rgba(76, 175, 80, 0.3); display: none; flex-wrap: wrap; gap: 15px;
     }
+    body.in-game #hud { display: flex; }
 
     /* Overlay Screen */
     .overlay {
@@ -669,6 +670,7 @@
       document.getElementById('to-start-btn').addEventListener('click', () => {
         document.getElementById('game-over-screen').style.display = 'none';
         document.getElementById('start-screen').style.display = 'flex';
+        document.body.classList.remove('in-game');
         refreshRecordsUI();
       });
 
@@ -720,6 +722,7 @@
 
     function startGame() {
       lockPointer();
+      document.body.classList.add('in-game');
 
       document.getElementById('start-screen').style.display = 'none';
       document.getElementById('game-over-screen').style.display = 'none';
