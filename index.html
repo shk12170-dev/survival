@@ -127,6 +127,7 @@
     <div>해상도: <span id="ui-resolution">1920x1080</span></div>
     <div>남은 적: <span id="ui-enemies">0</span></div>
     <div>점수: <span id="ui-score">0</span></div>
+    <div style="color:#aaa; font-weight:normal;">WASD 이동 · 좌클릭 발사 · P 일시정지 · 30초 생존 시 성공</div>
   </div>
 
   <!-- Start Screen -->
@@ -201,9 +202,9 @@
         <div class="setting-row">
           <label for="setting-difficulty"><b>난이도 설정 (Difficulty)</b></label>
           <select id="setting-difficulty">
-            <option value="easy">쉬움 (Easy - 생성 3.5초 / 데미지 낮음)</option>
-            <option value="normal" selected>보통 (Normal - 생성 2.0초 / 기본)</option>
-            <option value="hard">어려움 (Hard - 생성 1.0초 / 속도·데미지 증가)</option>
+            <option value="easy">쉬움 (Easy - 적 생성 3.5초마다)</option>
+            <option value="normal" selected>보통 (Normal - 적 생성 2.0초마다)</option>
+            <option value="hard">어려움 (Hard - 적 생성 1.0초마다)</option>
           </select>
         </div>
 
@@ -385,7 +386,8 @@
     const STEP_MS = 1000 / 60;     // 게임 로직은 모니터 주사율과 관계없이 1초에 60번 고정 속도로 계산
     const STEPS_PER_SEC = 60;
     const MAX_RECORDS = 20;        // 최근 20회 기록만 보관
-    const SHOT_COOLDOWN_MS = 150;  // 연타해도 총알이 너무 많이 나가지 않도록 제한
+    // 핵심 입력 = 좌클릭 사격. 클릭 1건 = 총알 1발 (쿨다운 없음, 10건 → 10발)
+    let shotsFired = 0;            // 검사용 카운터 (콘솔에서 shotsFired 로 확인)
 
     let isPlaying = false;
     let isPaused = false;
@@ -406,16 +408,16 @@
     let currentResolution = DEFAULT_SETTINGS.resolution;
     let currentDifficulty = DEFAULT_SETTINGS.difficulty;
     let spawnInterval = 2.0;
-    let speedMult = 1.0;
-    let damageMult = 1.0;
+    const speedMult = 1.0;  // 난이도 비교용 값은 spawnInterval 하나뿐: 속도·데미지는 고정
+    const damageMult = 1.0;
 
     let enableShake = true;
     let reduceMotion = false;
     let isMuted = false;
     let shakeIntensity = 0;
 
-    const RECORDS_KEY = 'fps_survival_records_v8';
-    const STATS_KEY = 'fps_survival_stats_v1';
+    const RECORDS_KEY = 'fps_survival_records_v9';  // 난이도 규칙이 바뀌어 이전 기록과 섞이지 않도록 새 키 사용
+    const STATS_KEY = 'fps_survival_stats_v2';
     const SETTINGS_KEY = 'fps_survival_settings_v1';
     const DIFF_LABEL = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
@@ -428,11 +430,11 @@
 
     function applyDifficultySettings() {
       if (currentDifficulty === 'easy') {
-        spawnInterval = 3.5; speedMult = 0.75; damageMult = 0.7;
+        spawnInterval = 3.5;
       } else if (currentDifficulty === 'hard') {
-        spawnInterval = 1.0; speedMult = 1.35; damageMult = 1.4;
+        spawnInterval = 1.0;
       } else {
-        spawnInterval = 2.0; speedMult = 1.0; damageMult = 1.0;
+        spawnInterval = 2.0;
       }
     }
 
@@ -733,7 +735,7 @@
       isPlaying = true; isPaused = false; gameState = 'in_progress';
       timer = MAX_GAME_TIME; stepCount = 0; spawnAcc = 0; accumulator = 0;
       score = 0; playerHp = 100; killCount = 0; failureReason = '';
-      lastShotTime = 0; lastHurtStep = -999; shakeIntensity = 0;
+      shotsFired = 0; lastHurtStep = -999; shakeIntensity = 0;
       player.x = 0; player.y = 0; player.angle = 0;
       enemies = []; bullets = [];
       resetKeys();
@@ -790,9 +792,7 @@
     }
 
     function shoot() {
-      const now = performance.now();
-      if (now - lastShotTime < SHOT_COOLDOWN_MS) return;
-      lastShotTime = now;
+      shotsFired++;
       bullets.push({
         x: player.x, y: player.y,
         dx: Math.cos(player.angle) * 16,
@@ -928,9 +928,12 @@
 
           const dmg = (e.type === 'human' ? 0.35 : 0.55) * damageMult;
           playerHp -= dmg;
-          if (stepCount - lastHurtStep >= 20) { lastHurtStep = stepCount; playSound('hurt'); }
+          // 피격 효과(소리·흔들림)는 1/3초에 한 번만: 접촉이 이어져도 효과가 계속 반복되지 않음
+          if (stepCount - lastHurtStep >= 20) {
+            lastHurtStep = stepCount; playSound('hurt');
+            if (enableShake && !reduceMotion) shakeIntensity = 5;
+          }
           updateHUD();
-          if (enableShake && !reduceMotion) shakeIntensity = 5;
 
           if (playerHp <= 0) {
             failureReason = e.type === 'human' ? '사람 적의 내리치기 공격으로 사망' : '맹수의 덮치기 공격으로 사망';
